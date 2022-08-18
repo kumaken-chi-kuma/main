@@ -49,6 +49,39 @@ void BasicDriver::Stop() {
   wheels_control_->Exec(0, 0);
 }
 
+/////////////////////////////////経路追従////////////////////////////////////
+
+PursuitDriver::PursuitDriver(WheelsControl* wheels_control, PurePursuit* pure_pursuit)
+    : wheels_control_(wheels_control), pure_pursuit_(pure_pursuit),
+      move_type_(kInvalidMove), base_power_(0) {
+}
+
+PursuitDriver::~PursuitDriver() {
+}
+
+void PursuitDriver::SetParam(Move move_type, int base_power) {
+  move_type_ = move_type;
+  base_power_ = base_power;
+}
+
+void PursuitDriver::Run() {
+  float target_distance_ = pure_pursuit_->target_distance;
+  float difference_rad_ = pure_pursuit_->difference_rad;
+  p_power_l = gain_kv_l * target_distance_ - gain_kt_l * difference_rad_ + base_power_;
+  p_power_r = gain_kv_r * target_distance_ + gain_kt_r * difference_rad_ + base_power_;
+
+  int power_l = (int)p_power_l;
+  int power_r = (int)p_power_r;
+
+  wheels_control_->Exec(power_l, power_r);
+}
+
+void PursuitDriver::Stop() {
+  wheels_control_->Exec(0, 0);
+}
+
+/////////////////////////////////経路追従////////////////////////////////////
+
 LineTracer::LineTracer(WheelsControl* wheels_control, Luminous* luminous)
     : wheels_control_(wheels_control), luminous_(luminous),
       move_type_(kInvalidMove), base_power_(0) {
@@ -223,8 +256,10 @@ bool EndCondition::IsSatisfied() {
   return end_state_;
 }
 
-DrivingManager::DrivingManager(BasicDriver* basic_driver, LineTracer* line_tracer, EndCondition* end_condition)
-    : basic_driver_(basic_driver), line_tracer_(line_tracer), end_condition_(end_condition) {
+DrivingManager::DrivingManager(BasicDriver* basic_driver, PursuitDriver* pursuit_driver, LineTracer* line_tracer, EndCondition* end_condition)
+// DrivingManager::DrivingManager(BasicDriver* basic_driver, LineTracer* line_tracer, EndCondition* end_condition)
+    : basic_driver_(basic_driver), pursuit_driver_(pursuit_driver), line_tracer_(line_tracer), end_condition_(end_condition) {
+    // : basic_driver_(basic_driver), line_tracer_(line_tracer), end_condition_(end_condition) {
 }
 
 void DrivingManager::Update() {
@@ -277,6 +312,11 @@ void DrivingManager::SetMoveParam(DrivingParam& param) {
       line_tracer_->SetParam(move_type, base_power, gain);
       break;
 
+    case kPursuitLeft:
+    case kPursuitRight:
+      pursuit_driver_->SetParam(move_type, base_power);
+      break;
+
     case kGoForward:
     case kGoBackward:
     case kRotateLeft:
@@ -314,7 +354,12 @@ void DrivingManager::Drive(DrivingParam& param) {
     case kTraceBlueRightEdge:
       line_tracer_->Blue_Run();
       break;
-        
+
+    case kPursuitLeft:
+    case kPursuitRight:
+      pursuit_driver_->Run();
+      break;
+   
     case kGoForward:
     case kGoBackward:
     case kRotateLeft:

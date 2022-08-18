@@ -33,6 +33,8 @@ enum Move {
   kTraceBlueRightEdge,
   kRightcurve,
   kLeftcurve,
+  kPursuitLeft,
+  kPursuitRight,
   kGoForward,
   kGoBackward,
   kRotateLeft,

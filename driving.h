@@ -30,6 +30,28 @@ class BasicDriver {
   int8_t base_power_;
 };
 
+class PursuitDriver {
+ public:
+  PursuitDriver(WheelsControl* wheels_control, PurePursuit* pure_pursuit);
+  ~PursuitDriver();
+  void SetParam(Move move_type, int base_power);
+  void Run();
+  void Stop();
+
+ private:
+  WheelsControl* wheels_control_;
+  PurePursuit* pure_pursuit_;
+  Move move_type_;
+  const double lf = 65;
+  double gain_kv_r = 0.057; //比例
+  double gain_kv_l = 0.05; //比例
+  double gain_kt_r = 6.5; //微分
+  double gain_kt_l = 6.5; //微分
+  double p_power_l;
+  double p_power_r;
+  int base_power_;
+};
+
 class LineTracer {
  public:
   LineTracer(WheelsControl* wheels_control, Luminous* luminous);
@@ -78,7 +100,8 @@ class EndCondition {
 
 class DrivingManager {
  public:
-  DrivingManager(BasicDriver* basic_driver, LineTracer* line_tracer, EndCondition* end_condition);
+  DrivingManager(BasicDriver* basic_driver, PursuitDriver* pursuit_driver, LineTracer* line_tracer, EndCondition* end_condition);
+  // DrivingManager(BasicDriver* basic_driver, LineTracer* line_tracer, EndCondition* end_condition);
   void Update();
   void AddDrivingParam(DrivingParam param);
   bool DrivingParamsEmpty();
@@ -88,6 +111,7 @@ class DrivingManager {
   void SetEndParam(DrivingParam& param);
   void Drive(DrivingParam& param);
   BasicDriver* basic_driver_;
+  PursuitDriver* pursuit_driver_;
   LineTracer* line_tracer_;
   EndCondition* end_condition_;
   std::list<DrivingParam> driving_params_;

@@ -26,9 +26,6 @@ void Luminous::UpdateRgb() {
   rgb_.g = (val.g < MAX_G) ? max_g * 255 / (MAX_G - MIN_G): 255;
   rgb_.b = (val.b < MAX_B) ? max_b * 255 / (MAX_B - MIN_B): 255;
 /////////////////paku//////////////////////
-  // rgb_.r = val.r;
-  // rgb_.g = val.g;
-  // rgb_.b = val.b;
 }
 
 void Luminous::UpdateHsv() {
@@ -84,46 +81,6 @@ void Luminous::UpdateHsv() {
 //////////////////////paku///////////////////////////
 
 
-  ////////////////////matu///////////////////////////
-  // float r = static_cast<float>(rgb_.r);
-  // float g = static_cast<float>(rgb_.g);
-  // float b = static_cast<float>(rgb_.b);
-
-  // float max = r > g ? r : g;
-  // max = max > b ? max : b;
-  // float min = r < g ? r : g;
-  // min = min < b ? min : b;
-  // float c = max - min;
-
-  // float h;
-  // if (c == 0) {
-  //   h = -1;
-  // } else if (max == r) {
-  //   h = fmodf(((g - b) / c), 6);
-  // } else if (max == g) {
-  //   h = ((b - r) / c) + 2;
-  // } else if (max == b) {
-  //   h = ((r - g) / c) + 4;
-  // } else {
-  //   h = -1;
-  // }
-
-  // if (h != -1) {
-  //   h = 60 * h;
-  // }
-
-  // float s;
-  // if (max == 0) {
-  //   s = 0;
-  // } else {
-  //   s = c / max;
-  // }
-
-  // float v = max;
-
-  // hsv_.h = h;
-  // hsv_.s = s * 100;
-  // hsv_.v = v/2;//change
   // // char str[264];//add
   // sprintf(str, " h: %f s: %f v: %f \n",hsv_.h, hsv_.s, hsv_.v);//add
   // syslog(LOG_NOTICE, str);//add
@@ -224,6 +181,7 @@ void Odometry::Update() {
 
   theta = (Lr - Ll) / D;
   theta_wa += theta;
+  deg_theta = theta_wa * (M_PI / 180);
   double A = (Lr + Ll) / 2 * (1 - 0);
   double dx = A * cos(theta_wa + theta / 2);
   double dy = A * sin(theta_wa + theta / 2);
@@ -240,8 +198,9 @@ void Odometry::Update() {
   difference_y = y - before_y;
   direction = atan2(difference_y, difference_x);
 
-  char a[264];
-  sprintf(a, "distance: %f\n", distance);
+  sprintf(a, "distance: %.3f\n", distance);
+  // sprintf(a, "theta: %f\n", theta);
+  // printf("%s", a);
   syslog(LOG_NOTICE, a);
 }
 
@@ -317,19 +276,13 @@ double CubicSpline::Calc(double t) {
 }
 */
 
-PurePursuit::PurePursuit()
-  : x(0), y(0), yaw(0) {
+PurePursuit::PurePursuit(MotorIo* motor_io)
+  : motor_io_(motor_io), x(0), y(0), yaw(0) {
   // cubic_spline_ = new CubicSpline();
-  readTargetCourseCoordinate();
+  odometry_ = new Odometry(motor_io);
   pre_point_index = INT_MAX;
 }
 
-void PurePursuit::readTargetCourseCoordinate() {
-  // for (int i=0; i<size; i++) {
-  //   course_x[i] = ;
-  //   course_y[i] = ;
-  // }
-}
 
 double PurePursuit::calc_distance(double point_x, double point_y) {
   double dx = x - point_x;
@@ -340,7 +293,7 @@ double PurePursuit::calc_distance(double point_x, double point_y) {
 
 
 std::tuple<int, double> PurePursuit::search_target_index() {
-  int ind;
+  // int ind;
   if (pre_point_index == INT_MAX) {
     std::list<int> d;
 
@@ -355,7 +308,7 @@ std::tuple<int, double> PurePursuit::search_target_index() {
 
   } else {
     ind = pre_point_index;
-    double distance = calc_distance(course_x[ind],course_y[ind]);
+    double distance = calc_distance(course_x[ind], course_y[ind]);
 
     while (true) {
       double next_distance = calc_distance(course_x[ind+1], course_y[ind+1]);
@@ -363,7 +316,6 @@ std::tuple<int, double> PurePursuit::search_target_index() {
       if (ind + 1 < kCourseParamNum) {
         ind++;
       }
-
       distance = next_distance;
     }
 
@@ -381,6 +333,7 @@ std::tuple<int, double> PurePursuit::search_target_index() {
 std::tuple<int, double> PurePursuit::pursuit_control(int pind) {
   int target_ind;
   double lf;
+
   std::tie(target_ind, lf) = search_target_index();
 
   if (pind >= target_ind) {
@@ -405,28 +358,46 @@ std::tuple<int, double> PurePursuit::pursuit_control(int pind) {
 
 
 void PurePursuit::Update(double odometry_x, double odometry_y) {
-  double lf;
-  int target_ind;
+  odometry_->Update();
+  direction_odo = odometry_->direction;
+  
+  if (pre_point_index == INT_MAX) {
+  std::tie(target_ind, p_lf) = search_target_index();
+  }
+
+  std::tie(target_ind, delta) = pursuit_control(target_ind);
+
+  target_distance = calc_distance(course_x[target_ind], course_y[target_ind]);
+  target_direction = delta;
+  difference_rad = target_direction - direction_odo;
+
+  while (difference_rad > 4.7) //第四象限からの変換（偏角）
+  {
+    difference_rad = difference_rad - 6.28;
+  }
+  while (difference_rad < -4.7)
+  {
+    difference_rad = difference_rad + 6.28;
+  }
+
   x = odometry_x;
   y = odometry_y;
 
-  std::tie(target_ind, lf) = search_target_index();
-
-  double delta;
-  std::tie(target_ind, delta) = pursuit_control(target_ind);
+  sprintf(b, "target_ind: %d, target_distance: %f, x: %f, y: %f, target_direction: %f\n", target_ind, target_distance, odometry_x, odometry_y, target_direction);
+  syslog(LOG_NOTICE, b);
 }
 
 Localize::Localize(MotorIo* motor_io) {
   odometry_ = new Odometry(motor_io);
-  pure_pursuit_ = new PurePursuit();
+  pure_pursuit_ = new PurePursuit(motor_io);
 }
 
 void Localize::Update() {
   odometry_->Update();
   distance_ = odometry_->distance;
-  theta_ = odometry_->theta;
+  theta_ = odometry_->deg_theta;
   odometry_x = odometry_->x;
   odometry_y = odometry_->y;
 
-  //pure_pursuit_->Update(odometry_x, odometry_y);
+  pure_pursuit_->Update(odometry_x, odometry_y);
 }
